@@ -253,19 +253,6 @@ class Server():
 		slicingManager.initialize()
 		pluginLifecycleManager.add_callback(["enabled", "disabled"], lambda name, plugin: slicingManager.reload_slicers())
 
-		# setup jinja2
-		self._setup_jinja2()
-		def template_enabled(name, plugin):
-			if plugin.implementation is None or not isinstance(plugin.implementation, octoprint.plugin.TemplatePlugin):
-				return
-			self._register_additional_template_plugin(plugin.implementation)
-		def template_disabled(name, plugin):
-			if plugin.implementation is None or not isinstance(plugin.implementation, octoprint.plugin.TemplatePlugin):
-				return
-			self._unregister_additional_template_plugin(plugin.implementation)
-		pluginLifecycleManager.add_callback("enabled", template_enabled)
-		pluginLifecycleManager.add_callback("disabled", template_disabled)
-
 		# setup assets
 		self._setup_assets()
 
@@ -643,43 +630,6 @@ class Server():
 		@babel.localeselector
 		def get_locale():
 			return self._get_locale()
-
-	def _setup_jinja2(self):
-		app.jinja_env.add_extension("jinja2.ext.do")
-
-		# configure additional template folders for jinja2
-		import jinja2
-		import octoprint.util.jinja
-		filesystem_loader = octoprint.util.jinja.FilteredFileSystemLoader([],
-		                                                                  path_filter=lambda x: not octoprint.util.is_hidden_path(x))
-		filesystem_loader.searchpath = self._template_searchpaths
-
-		jinja_loader = jinja2.ChoiceLoader([
-			app.jinja_loader,
-			filesystem_loader
-		])
-		app.jinja_loader = jinja_loader
-		del jinja2
-
-		self._register_template_plugins()
-
-	def _register_template_plugins(self):
-		template_plugins = pluginManager.get_implementations(octoprint.plugin.TemplatePlugin)
-		for plugin in template_plugins:
-			try:
-				self._register_additional_template_plugin(plugin)
-			except:
-				self._logger.exception("Error while trying to register templates of plugin {}, ignoring it".format(plugin._identifier))
-
-	def _register_additional_template_plugin(self, plugin):
-		folder = plugin.get_template_folder()
-		if folder is not None and not folder in self._template_searchpaths:
-			self._template_searchpaths.append(folder)
-
-	def _unregister_additional_template_plugin(self, plugin):
-		folder = plugin.get_template_folder()
-		if folder is not None and folder in self._template_searchpaths:
-			self._template_searchpaths.remove(folder)
 
 	def _setup_blueprints(self):
 		from octoprint.server.api import api

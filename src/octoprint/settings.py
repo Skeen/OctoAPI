@@ -388,8 +388,6 @@ class Settings(object):
 			self.set(["api", "key"], ''.join('%02X' % ord(z) for z in uuid.uuid4().bytes))
 			self.save(force=True)
 
-		self._script_env = self._init_script_templating()
-
 	def _init_basedir(self, basedir):
 		if basedir is not None:
 			self._basedir = basedir
@@ -404,127 +402,6 @@ class Settings(object):
 		if folder is None:
 			folder = os.path.join(self._basedir, type.replace("_", os.path.sep))
 		return folder
-
-	def _init_script_templating(self):
-		from jinja2 import Environment, BaseLoader, ChoiceLoader, TemplateNotFound
-		from jinja2.nodes import Include
-		from jinja2.ext import Extension
-
-		from octoprint.util.jinja import FilteredFileSystemLoader
-
-		class SnippetExtension(Extension):
-			tags = {"snippet"}
-			fields = Include.fields
-
-			def parse(self, parser):
-				node = parser.parse_include()
-				if not node.template.value.startswith("/"):
-					node.template.value = "snippets/" + node.template.value
-				return node
-
-		class SettingsScriptLoader(BaseLoader):
-			def __init__(self, s):
-				self._settings = s
-
-			def get_source(self, environment, template):
-				parts = template.split("/")
-				if not len(parts):
-					raise TemplateNotFound(template)
-
-				script = self._settings.get(["scripts"], merged=True)
-				for part in parts:
-					if isinstance(script, dict) and part in script:
-						script = script[part]
-					else:
-						raise TemplateNotFound(template)
-				source = script
-				if source is None:
-					raise TemplateNotFound(template)
-				mtime = self._settings._mtime
-				return source, None, lambda: mtime == self._settings.last_modified
-
-			def list_templates(self):
-				scripts = self._settings.get(["scripts"], merged=True)
-				return self._get_templates(scripts)
-
-			def _get_templates(self, scripts):
-				templates = []
-				for key in scripts:
-					if isinstance(scripts[key], dict):
-						templates += map(lambda x: key + "/" + x, self._get_templates(scripts[key]))
-					elif isinstance(scripts[key], basestring):
-						templates.append(key)
-				return templates
-
-		class SelectLoader(BaseLoader):
-			def __init__(self, default, mapping, sep=":"):
-				self._default = default
-				self._mapping = mapping
-				self._sep = sep
-
-			def get_source(self, environment, template):
-				if self._sep in template:
-					prefix, name = template.split(self._sep, 1)
-					if not prefix in self._mapping:
-						raise TemplateNotFound(template)
-					return self._mapping[prefix].get_source(environment, name)
-				return self._default.get_source(environment, template)
-
-			def list_templates(self):
-				return self._default.list_templates()
-
-		class RelEnvironment(Environment):
-			def __init__(self, prefix_sep=":", *args, **kwargs):
-				Environment.__init__(self, *args, **kwargs)
-				self._prefix_sep = prefix_sep
-
-			def join_path(self, template, parent):
-				prefix, name = self._split_prefix(template)
-
-				if name.startswith("/"):
-					return self._join_prefix(prefix, name[1:])
-				else:
-					_, parent_name = self._split_prefix(parent)
-					parent_base = parent_name.split("/")[:-1]
-					return self._join_prefix(prefix, "/".join(parent_base) + "/" + name)
-
-			def _split_prefix(self, template):
-				if self._prefix_sep in template:
-					return template.split(self._prefix_sep, 1)
-				else:
-					return "", template
-
-			def _join_prefix(self, prefix, template):
-				if len(prefix):
-					return prefix + self._prefix_sep + template
-				else:
-					return template
-
-		path_filter = lambda path: not is_hidden_path(path)
-		file_system_loader = FilteredFileSystemLoader(self.getBaseFolder("scripts"),
-		                                              path_filter=path_filter)
-		settings_loader = SettingsScriptLoader(self)
-		choice_loader = ChoiceLoader([file_system_loader, settings_loader])
-		select_loader = SelectLoader(choice_loader,
-		                             dict(bundled=settings_loader,
-		                                  file=file_system_loader))
-		return RelEnvironment(loader=select_loader, extensions=[SnippetExtension])
-
-	def _get_script_template(self, script_type, name, source=False):
-		from jinja2 import TemplateNotFound
-
-		template_name = script_type + "/" + name
-		try:
-			if source:
-				template_name, _, _ = self._script_env.loader.get_source(self._script_env, template_name)
-				return template_name
-			else:
-				return self._script_env.get_template(template_name)
-		except TemplateNotFound:
-			return None
-		except:
-			self._logger.exception("Exception while trying to resolve template {template_name}".format(**locals()))
-			return None
 
 	def _get_scripts(self, script_type):
 		return self._script_env.list_templates(filter_func=lambda x: x.startswith(script_type+"/"))
@@ -969,26 +846,6 @@ class Settings(object):
 
 	def listScripts(self, script_type):
 		return map(lambda x: x[len(script_type + "/"):], filter(lambda x: x.startswith(script_type + "/"), self._get_scripts(script_type)))
-
-	def loadScript(self, script_type, name, context=None, source=False):
-		if context is None:
-			context = dict()
-		context.update(dict(script=dict(type=script_type, name=name)))
-
-		template = self._get_script_template(script_type, name, source=source)
-		if template is None:
-			return None
-
-		if source:
-			script = template
-		else:
-			try:
-				script = template.render(**context)
-			except:
-				self._logger.exception("Exception while trying to render script {script_type}:{name}".format(**locals()))
-				return None
-
-		return script
 
 	#~~ remove
 
