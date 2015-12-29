@@ -271,7 +271,7 @@ default_settings = {
 			"clean_on_startup": True
 		},
 		"virtualPrinter": {
-			"enabled": False,
+			"enabled": True,
 			"okAfterResend": False,
 			"forceChecksum": False,
 			"okWithLinenumber": False,
