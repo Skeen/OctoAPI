@@ -634,7 +634,6 @@ class Server():
 	def _setup_blueprints(self):
 		from octoprint.server.api import api
 		from octoprint.server.apps import apps, clear_registered_app
-		import octoprint.server.views
 
 		app.register_blueprint(api, url_prefix="/api")
 		app.register_blueprint(apps, url_prefix="/apps")
