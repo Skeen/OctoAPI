@@ -95,7 +95,6 @@ def plugin_manager(init=False, plugin_folders=None, plugin_types=None, plugin_en
 			if plugin_types is None:
 				plugin_types = [StartupPlugin,
 				                ShutdownPlugin,
-				                TemplatePlugin,
 				                SettingsPlugin,
 				                SimpleApiPlugin,
 				                AssetPlugin,
